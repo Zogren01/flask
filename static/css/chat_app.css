@@ -1,0 +1,7 @@
+.err{
+    color: red;
+}
+#window{
+    outline: 1px solid black;
+    overflow-y:auto;
+}

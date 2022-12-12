@@ -1,10 +1,10 @@
-from flask import Flask, request, url_for, redirect, render_template, session
+from flask import Flask, request, url_for, redirect, render_template, session, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import os
+import json
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db' 
 app.config['SQLALCHEMY_BINDS'] = {'chat': 'sqlite:///chat.db'}
 db = SQLAlchemy(app)
@@ -37,7 +37,7 @@ def login_controller():
           session['username'] = user.username
           return redirect(url_for("profile", username=username))
         else:
-          return 'Invalid username/password'
+          return render_template('loginPage.html') + '<p class="err">Invalid username/password</p>'
 
     return render_template('loginPage.html')
 
@@ -46,10 +46,10 @@ def register_controller():
 
     if request.method == 'POST':
         username = request.form['username']
+        email = request.form['email']
         password = request.form['password']
         retype = request.form['retype']
-        email = request.form['email']
-
+        
         if password == retype:
             try:
                 new_user = User(username=username, email=email, password=password)
@@ -57,42 +57,51 @@ def register_controller():
                 db.session.commit()
                 return redirect(url_for("profile", username=username))
             except:
-                print("problems with adding to db")
-                return "There was an issue adding your profile"
+                return render_template("register.html") + '<p class="err">There was an issue adding your profile</p>'
         else:
-            return "Passwords do not match"
-    else:
-        return render_template("register.html")
+            return render_template("register.html") + '<p class="err">Entered passwords do not match</p>' 
 
-@app.route("/register/", methods = ['GET', 'POST'])
-@app.route("/profile/<username>") 
+    return render_template("register.html")
+
+@app.route("/profile/<username>", methods = ['GET', 'POST'])
 def profile(username=None): 
-    return """
-    <!DOCTYPE html>
-    <h1>home page stuff </h1>
-    <a href="login">login page, change later</a>
-    """
+    if "username" in session:
+        messages = Message.query.order_by(Message.date_created.desc()).all()
+        user = User.query.filter_by(username=username).first()
+        return render_template('chat_page.html', user=user, messages=messages)
+    else:
+        return redirect(url_for("login_controller"))
 
 @app.route("/logout/") 
 def unlogger(): 
-    return """
-    <!DOCTYPE html>
-    <h1>home page stuff </h1>
-    <a href="login">login page, change later</a>
-    """
+
+    session.clear()
+    return render_template("logoutPage.html")
+	
 @app.route("/new_message/", methods=["POST"]) 
 def new_message(): 
-    return """
-    <!DOCTYPE html>
-    <h1>home page stuff </h1>
-    <a href="login">login page, change later</a>
-    """
-@app.route("/messages/") 
+    message = request.form.get('message')
+    author = request.form.get('author') 
+    new_chat = Message(author=author, message=message)
+    try:
+        db.session.add(new_chat)
+        db.session.commit()
+        addChat = {'author': author, 'message': message}
+        return json.dumps(addChat)
+    except Exception as e:
+        print("There was an error adding your chat message")
+
+@app.route("/messages/")  
 def messages(): 
-    return """
-    <!DOCTYPE html>
-    <h1>home page stuff </h1>
-    <a href="login">login page, change later</a>
-    """
+    all_chats = Message.query.order_by(Message.date_created.desc()).all()
+    all_chats_json = { }
+    for index, element in enumerate(all_chats):
+        all_chats_json[index] = { }
+        all_chats_json[index]['author'] = element.author
+        all_chats_json[index]['message'] = element.message
+        all_chats_json[index]['datetime'] = element.date_created.date()
+    return jsonify(all_chats_json)
+
 if __name__ == "__main__":
+    app.secret_key = os.urandom(24)
     app.run()
